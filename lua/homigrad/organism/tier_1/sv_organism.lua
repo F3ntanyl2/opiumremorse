@@ -45,6 +45,7 @@ hook.Add("Org Clear", "Main", function(org)
 	module.liver[1](org)
 	module.metabolism[1](org)
 	module.random_events[1](org)
+	module.depression[1](org)
 	org.brain = 0
 	org.brainFrontal = 0
 	org.brainParietal = 0
@@ -247,6 +248,8 @@ local function send_organism(org, ply)
 	sendtable.lungsfunction = org.lungsfunction
 	sendtable.eyeL = org.eyeL
 	sendtable.eyeR = org.eyeR
+	sendtable.eyePoppedL = org.eyePoppedL
+	sendtable.eyePoppedR = org.eyePoppedR
 	sendtable.consciousness = org.consciousness
 	sendtable.assimilated = org.assimilated
 	sendtable.berserk = org.berserk
@@ -267,6 +270,7 @@ local function send_organism(org, ply)
 	sendtable.noradrenalineActive = org.noradrenalineActive
 
 	sendtable.superfighter = org.superfighter
+	sendtable.depression = org.depression
 
 	net.Start("organism_send", hg_unreliable_nets:GetBool())
 	net.WriteTable(not hg_developer:GetBool() and sendtable or org)
@@ -312,6 +316,8 @@ local function send_bareinfo(org)
 	sendtable.lungsfunction = org.lungsfunction
 	sendtable.eyeL = org.eyeL
 	sendtable.eyeR = org.eyeR
+	sendtable.eyePoppedL = org.eyePoppedL
+	sendtable.eyePoppedR = org.eyePoppedR
 	sendtable.lleg = org.lleg
 	sendtable.rleg = org.rleg
 	sendtable.rarm = org.rarm
@@ -342,6 +348,8 @@ local function send_bareinfo(org)
 	sendtable.brainOccipital = org.brainOccipital
 	sendtable.brainHemorrhage = org.brainHemorrhage
 	sendtable.brainBleedRate = org.brainBleedRate
+	sendtable.incapacitated = org.incapacitated
+	sendtable.deathStateEnd = org.deathStateEnd or 0
 
 	local rf = RecipientFilter()
 	--rf:AddAllPlayers()
@@ -366,7 +374,7 @@ function META:IsBerserk()
 	if self:IsPlayer() and not self:Alive() then return false end
 
 	local org = self.organism
-	return org.berserkActive2 or false
+	return org and (org.berserkActive2 or false) or false
 end
 
 function META:IsStimulated()
@@ -374,7 +382,7 @@ function META:IsStimulated()
 	if self:IsPlayer() and not self:Alive() then return false end
 
 	local org = self.organism
-	return org.noradrenalineActive or false
+	return org and (org.noradrenalineActive or false) or false
 end
 
 local META2 = FindMetaTable("Entity")
@@ -407,10 +415,6 @@ end
 
 local function getSeizureLobeDamage(org)
 	return math.Clamp((org.brainFrontal or 0) + (org.brainParietal or 0) + (org.brainTemporal or 0) + (org.brainOccipital or 0), 0, 1)
-end
-
-local function apply_seizure_pose(rag, org, time)
-	if hg.applySeizurePostureToRagdoll then hg.applySeizurePostureToRagdoll(rag, org, 1) end
 end
 
 local function stop_seizure(owner, org)
@@ -609,6 +613,8 @@ hook.Add("Org Think", "Main", function(owner, org, timeValue)
 	end
 	module.pulse[2](owner, org, timeValue)
 
+	module.depression[2](owner, org, timeValue)
+
 	if org.owner.PlayerClassName == "furry" then
 		org.assimilated = 0
 	end
@@ -743,10 +749,6 @@ hook.Add("Org Think", "Main", function(owner, org, timeValue)
 				org.brain = math.max(org.brain or 0, seizure_brain_damage_final * frac)
 			end
 
-			local rag = owner.FakeRagdoll
-			if IsValid(rag) then
-				apply_seizure_pose(rag, org, time)
-			end
 		end
 	end
 
@@ -1034,32 +1036,55 @@ hook.Add("Org Think", "regenerationnoradrenaline", function(owner, org, timeValu
 	org.fibrillation = false
 end)
 
+local function set_organism_value(org, key, value)
+	if key == "o2" then
+		hg.organism.EnsureO2(org)[1] = value
+		return
+	end
+
+	local current = org[key]
+	if istable(current) then
+		if isnumber(current[1]) then current[1] = value end
+		return
+	end
+
+	if isbool(current) then
+		org[key] = value ~= 0
+	else
+		org[key] = value
+	end
+end
+
 concommand.Add("hg_organism_setvalue", function(ply, cmd, args)
 	if not ply:IsAdmin() then return end
+	if not ply.organism or not args[1] then return end
+
+	local value = tonumber(args[2])
+	if value == nil then return end
 
 	if not args[3] then
-		if isbool(ply.organism[args[1]]) then
-			ply.organism[args[1]] = tonumber(args[2]) != 0
-		else
-			ply.organism[args[1]] = tonumber(args[2])
-		end
+		set_organism_value(ply.organism, args[1], value)
 	end
 
 	if args[3] then
 		for i,pl in pairs(player.GetListByName(args[3])) do
-			if isbool(pl.organism[args[1]]) then
-				pl.organism[args[1]] = tonumber(args[2]) != 0
-			else
-				pl.organism[args[1]] = tonumber(args[2])
-			end
+			if pl.organism then set_organism_value(pl.organism, args[1], value) end
 		end
 	end
 end)
 
 concommand.Add("hg_organism_setvalue2", function(ply, cmd, args)
 	if not ply:IsAdmin() then return end
+	if not ply.organism or not args[1] then return end
 
-	ply.organism[args[1]][tonumber(args[2])] = tonumber(args[3])
+	local index = tonumber(args[2])
+	local value = tonumber(args[3])
+	if index == nil or value == nil then return end
+
+	local target = args[1] == "o2" and hg.organism.EnsureO2(ply.organism) or ply.organism[args[1]]
+	if not istable(target) then return end
+
+	target[index] = value
 end)
 
 concommand.Add("hg_organism_clear", function(ply, cmd, args)

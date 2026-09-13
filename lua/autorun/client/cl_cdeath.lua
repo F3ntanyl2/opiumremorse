@@ -1,6 +1,6 @@
 if not CLIENT then return end
 
--- config. maybe i'll make more of these customizable soon?
+
 local CLICK_SOUND         = "player/dfujiclick.wav"
 local STAGE_1_DURATION    = 0
 local STAGE_1_MIN_DIST    = 60
@@ -10,6 +10,8 @@ local STAGE_1_MAX_HEIGHT  = 0
 local STAGE_1_LOOK_HEIGHT = 15
 local BLACK_FADE_DURATION = 7
 local BLACK_FADE_OUT_DURATION = 2
+local REALISH_BLACK_FADE_DURATION = 0.35
+local REALISH_BLACK_FADE_OUT_DURATION = 0.45
 local DEATH_TEXT_FADE_IN  = 1
 local OPTIONS_FADE_IN     = 1.0
 local TRANSITION_DURATION = 0.6
@@ -19,18 +21,34 @@ local DEATH_SOUNDS = {
     [0] = "rem_brutaldeath.mp3",
 }
 
--- server convar values yesss
+
 local cfg_spectator     = true
 local cfg_compat        = false
 local cfg_options_delay = 4
+local cfg_realish       = false
 
 net.Receive("DeathEffect_Config", function()
     cfg_spectator     = net.ReadBool()
     cfg_compat        = net.ReadBool()
     cfg_options_delay = net.ReadFloat()
+    cfg_realish       = net.ReadBool()
+
+
+
+
+    timer.Simple(0, function()
+        local ply = LocalPlayer()
+        if not IsValid(ply) then return end
+        if not ply:Alive() and not isDead then
+
+
+
+            ply.DeathEffect_ServerDeathSignal = CurTime()
+        end
+    end)
 end)
 
--- convars (client)
+
 CreateClientConVar(
     "deatheffect_cam_max_dist", "150",
     true, false,
@@ -70,7 +88,7 @@ surface.CreateFont("DeathEffect_HG", { font = (hg_font and hg_font:GetString() ~
 surface.CreateFont("DeathEffect_HG_Large", { font = (hg_font and hg_font:GetString() ~= "" and hg_font:GetString()) or "Lora", size = 120, weight = 400, antialias = true })
 surface.CreateFont("DeathEffect_HG_Desc", { font = (hg_font and hg_font:GetString() ~= "" and hg_font:GetString()) or "Lora", size = 28, weight = 400, antialias = true })
 
--- binds
+
 local function LookupKey(binding)
     local key = input.LookupBinding("+" .. binding) or input.LookupBinding(binding)
     if not key or key == "" then return KEY_UNKNOWN, "?" end
@@ -125,7 +143,7 @@ local prevSpecReloadDown  = false
 local nextCamSync         = 0
 local nextSoundfade       = 0
 
--- z-city bypassing
+
 local zcity_RenderScene = nil
 local zcity_CalcView = nil
 
@@ -162,6 +180,10 @@ end
 
 local function DeathScreenEnabled()
     return not cv_death_screen or cv_death_screen:GetBool()
+end
+
+local function RealishDeathEffect()
+    return cfg_realish or zb and zb.CROUND == "realish"
 end
 
 cvars.AddChangeCallback("deatheffect_death_screen", function(_, _, newValue)
@@ -215,7 +237,60 @@ local function BeginTransition(callback)
     PlayClick()
 end
 
--- state tracking and init
+local function InitDeathSequence(ply)
+    if isDead then return end
+    isDead           = true
+    if DeathScreenEnabled() and not RealishDeathEffect() then
+        TakeAuthority()
+    end
+    stage2Started    = false
+    keepSoundAlive   = true
+    inTransition     = false
+    inSpectator      = false
+    autoCompatTriggered = false
+    compatActive     = false
+    compatActiveTime = 0
+    compatTriggered  = false
+    deathTime        = CurTime()
+    ragdollEnt       = ply:GetRagdollEntity()
+    prevReloadDown   = false
+    prevJumpDown     = false
+    prevSpecReloadDown = false
+
+    local plyPos = ply:GetPos()
+    deathPos     = plyPos
+
+    local randYaw  = math.random(0, 360)
+    local randDist = math.random(STAGE_1_MIN_DIST, STAGE_1_MAX_DIST)
+    local offset   = Vector(
+        math.cos(math.rad(randYaw)) * randDist,
+        math.sin(math.rad(randYaw)) * randDist,
+        math.random(STAGE_1_MIN_HEIGHT, STAGE_1_MAX_HEIGHT)
+    )
+
+    local traceStart = plyPos + Vector(0, 0, 40)
+    
+    local tr = util.TraceLine({
+        start  = traceStart,
+        endpos = traceStart + offset,
+        mask   = MASK_SOLID_BRUSHONLY
+    })
+
+    deathCamPos = tr.HitPos + tr.HitNormal * 5
+    deathCamAng = (plyPos + Vector(0, 0, STAGE_1_LOOK_HEIGHT) - deathCamPos):Angle()
+
+    deathSoundChannels = {}
+    for _, deathSound in pairs(DEATH_SOUNDS) do
+        sound.PlayFile("sound/" .. deathSound, "noplay", function(station)
+            if IsValid(station) then
+                deathSoundChannels[#deathSoundChannels + 1] = station
+                station:Play()
+            end
+        end)
+    end
+end
+
+
 local function CinematicDeathTracker()
     local ply = LocalPlayer()
     if not IsValid(ply) then return end
@@ -247,6 +322,11 @@ local function CinematicDeathTracker()
                 end
             end
             deathSoundChannels = {}
+
+            if ply:GetNWBool("DeathEffect_BlockRespawn", false) then
+                net.Start("DeathEffect_CompatUnblock")
+                net.SendToServer()
+            end
         end
 
         return
@@ -265,6 +345,11 @@ local function CinematicDeathTracker()
             deathSoundChannel:Stop()
             deathSoundChannel = nil
         end
+
+        if ply:GetNWBool("DeathEffect_BlockRespawn", false) then
+            net.Start("DeathEffect_CompatUnblock")
+            net.SendToServer()
+        end
         return
     end
 
@@ -273,57 +358,41 @@ local function CinematicDeathTracker()
     end
 
     if not ply:Alive() and not isDead and hasSpawned then
-        isDead           = true
-        if DeathScreenEnabled() then
-            TakeAuthority()
+        InitDeathSequence(ply)
+    elseif not ply:Alive() and not isDead and ply:GetNWBool("DeathEffect_BlockRespawn", false) then
+
+
+
+        if not ply.DeathEffect_ClientBlockStart then
+            ply.DeathEffect_ClientBlockStart = CurTime()
         end
-        stage2Started    = false
-        keepSoundAlive   = true
-        inTransition     = false
-        inSpectator      = false
-        autoCompatTriggered = false
-        compatActive     = false
-        compatActiveTime = 0
-        compatTriggered  = false
-        deathTime        = CurTime()
-        ragdollEnt       = ply:GetRagdollEntity()
-        prevReloadDown   = false
-        prevJumpDown     = false
-        prevSpecReloadDown = false
+        if (CurTime() - ply.DeathEffect_ClientBlockStart) > 0.5 or ply.DeathEffect_ServerDeathSignal then
 
-        local plyPos = ply:GetPos()
-        deathPos     = plyPos
-
-        local randYaw  = math.random(0, 360)
-        local randDist = math.random(STAGE_1_MIN_DIST, STAGE_1_MAX_DIST)
-        local offset   = Vector(
-            math.cos(math.rad(randYaw)) * randDist,
-            math.sin(math.rad(randYaw)) * randDist,
-            math.random(STAGE_1_MIN_HEIGHT, STAGE_1_MAX_HEIGHT)
-        )
-
-        local traceStart = plyPos + Vector(0, 0, 40)
-        
-        local tr = util.TraceLine({
-            start  = traceStart,
-            endpos = traceStart + offset,
-            mask   = MASK_SOLID_BRUSHONLY
-        })
-
-        deathCamPos = tr.HitPos + tr.HitNormal * 5
-        deathCamAng = (plyPos + Vector(0, 0, STAGE_1_LOOK_HEIGHT) - deathCamPos):Angle()
-
-        deathSoundChannels = {}
-        for _, deathSound in pairs(DEATH_SOUNDS) do
-            sound.PlayFile("sound/" .. deathSound, "noplay", function(station)
-                if IsValid(station) then
-                    deathSoundChannels[#deathSoundChannels + 1] = station
-                    station:Play()
-                end
-            end)
+            if ply.DeathEffect_ServerDeathSignal and (CurTime() - ply.DeathEffect_ServerDeathSignal) < 5 then
+                InitDeathSequence(ply)
+                ply.DeathEffect_ClientBlockStart = nil
+                ply.DeathEffect_ServerDeathSignal = nil
+            elseif (CurTime() - ply.DeathEffect_ClientBlockStart) > 0.5 then
+                InitDeathSequence(ply)
+                ply.DeathEffect_ClientBlockStart = nil
+                ply.DeathEffect_ServerDeathSignal = nil
+            end
         end
+    else
+        if ply:GetNWBool("DeathEffect_BlockRespawn", false) and ply:Alive() then
 
-    elseif ply:Alive() and isDead then
+            ply.DeathEffect_ClientBlockStart = nil
+            ply.DeathEffect_ServerDeathSignal = nil
+        elseif not ply:GetNWBool("DeathEffect_BlockRespawn", false) then
+            ply.DeathEffect_ClientBlockStart = nil
+
+            if ply.DeathEffect_ServerDeathSignal and (CurTime() - ply.DeathEffect_ServerDeathSignal) > 5 then
+                ply.DeathEffect_ServerDeathSignal = nil
+            end
+        end
+    end
+
+    if ply:Alive() and isDead then
         isDead         = false
         stage2Started  = false
         keepSoundAlive = false
@@ -353,21 +422,21 @@ local function CinematicDeathTracker()
         if (CurTime() - deathTime) >= STAGE_1_DURATION then
             stage2Started = true
             stage2Time    = CurTime()
-            if DeathScreenEnabled() then
+            if DeathScreenEnabled() and not RealishDeathEffect() then
                 LocalPlayer():SetDSP(17)
                 LocalPlayer():ConCommand("soundfade 100 99999")
             end
         end
     end
 
-    -- bypass loop
-    if isDead and not compatActive and DeathScreenEnabled() then
+
+    if isDead and not compatActive and DeathScreenEnabled() and not RealishDeathEffect() then
         ply:SetViewPunchAngles(Angle(0,0,0))
         ply:ScreenFade(SCREENFADE.IN, Color(0,0,0,0), 0.1, 0)
         
         if stage2Started and not inSpectator then
             ply:SetDSP(17)
-            -- keep re-applying the sound muting so it can't be bypassed
+
             if CurTime() >= nextSoundfade then
                 nextSoundfade = CurTime() + 0.5
                 ply:ConCommand("soundfade 100 99999")
@@ -420,9 +489,24 @@ local function CinematicDeathTracker()
     end
 
     if isDead and stage2Started and not autoCompatTriggered then
-        if (CurTime() - stage2Time) >= (BLACK_FADE_DURATION + BLACK_FADE_OUT_DURATION) then
+        local fadeDuration = RealishDeathEffect() and REALISH_BLACK_FADE_DURATION or BLACK_FADE_DURATION
+        local fadeOutDuration = RealishDeathEffect() and REALISH_BLACK_FADE_OUT_DURATION or BLACK_FADE_OUT_DURATION
+
+        if (CurTime() - stage2Time) >= (fadeDuration + fadeOutDuration) then
             autoCompatTriggered = true
             ActivateCompatMode()
+        end
+    end
+
+
+
+
+    if not isDead and not ply:Alive() and ply:GetNWBool("DeathEffect_BlockRespawn", false) then
+        if ply.DeathEffect_ClientBlockStart and (CurTime() - ply.DeathEffect_ClientBlockStart) > 8 then
+            ply.DeathEffect_ClientBlockStart = nil
+            ply.DeathEffect_ServerDeathSignal = nil
+            net.Start("DeathEffect_CompatUnblock")
+            net.SendToServer()
         end
     end
 
@@ -452,7 +536,7 @@ local function CinematicDeathTracker()
 end
 hook.Add("Think", "CinematicDeathTracker", CinematicDeathTracker)
 
--- mouse tracking
+
 local function CinematicDeathFreecamLook(cmd)
     if not inSpectator then return end
     local mX = cmd:GetMouseX()
@@ -464,9 +548,10 @@ local function CinematicDeathFreecamLook(cmd)
 end
 hook.Add("CreateMove", "CinematicDeathFreecamLook", CinematicDeathFreecamLook)
 
--- cam view shit. so you can spawn things in spectator
+
 local function BuildDeathView(fov)
     if not DeathScreenEnabled() then return end
+    if RealishDeathEffect() then return end
 
     if compatActive then 
         return {
@@ -530,7 +615,7 @@ local function BuildDeathView(fov)
     return view
 end
 
--- calcview mm
+
 local function CinematicDeathCamera(ply, pos, angles, fov)
     if not isDead then return end
     return BuildDeathView(fov)
@@ -543,16 +628,16 @@ local function CinematicDeathHGCalcView(ply, origin, angles, fov, znear, zfar)
 end
 hook.Add("HG_CalcView", "CinematicDeathHGOverride", CinematicDeathHGCalcView)
 
--- audio and visual overrides
+
 local function CinematicDeathMute()
-    if isDead and stage2Started and not inSpectator and not compatActive and DeathScreenEnabled() then
+    if isDead and stage2Started and not inSpectator and not compatActive and DeathScreenEnabled() and not RealishDeathEffect() then
         return false
     end
 end
 hook.Add("EntityEmitSound", "CinematicDeathMute", CinematicDeathMute)
 
 local function CinematicDeathHideRagdoll()
-    if not isDead or not IsValid(ragdollEnt) or compatActive or not DeathScreenEnabled() then return end
+    if not isDead or not IsValid(ragdollEnt) or compatActive or not DeathScreenEnabled() or RealishDeathEffect() then return end
     
     if (CurTime() - deathTime) < STAGE_1_DURATION then
         ragdollEnt:SetNoDraw(true)
@@ -586,12 +671,17 @@ local function CinematicDeathBackground()
 
     if elapsed >= STAGE_1_DURATION then
         local stageElapsed = elapsed - STAGE_1_DURATION
-        local fadeProgress = math.Clamp(stageElapsed / BLACK_FADE_DURATION, 0, 1)
-        local fadeOutProgress = math.Clamp((stageElapsed - BLACK_FADE_DURATION) / BLACK_FADE_OUT_DURATION, 0, 1)
-        local overlayAlpha = math.floor((1 - fadeOutProgress) * 255)
-        local red = math.floor((1 - fadeProgress) * 255)
+        local realish = RealishDeathEffect()
+        local fadeDuration = realish and REALISH_BLACK_FADE_DURATION or BLACK_FADE_DURATION
+        local fadeOutDuration = realish and REALISH_BLACK_FADE_OUT_DURATION or BLACK_FADE_OUT_DURATION
+        local fadeProgress = math.Clamp(stageElapsed / fadeDuration, 0, 1)
+        local fadeOutProgress = math.Clamp((stageElapsed - fadeDuration) / fadeOutDuration, 0, 1)
+		local overlayAlpha = realish and math.floor((fadeOutProgress > 0 and 1 - fadeOutProgress or fadeProgress) * 255) or math.floor((1 - fadeOutProgress) * 255)
+        local red = realish and 0 or math.floor((1 - fadeProgress) * 255)
         surface.SetDrawColor(red, 0, 0, overlayAlpha)
         surface.DrawRect(0, 0, sw, sh)
+
+        if realish then return end
 
         if not DeathScreenEnabled() then
             local textFadeIn = math.Clamp(stageElapsed / DEATH_TEXT_FADE_IN, 0, 1)
@@ -639,7 +729,7 @@ local function HideDefaultDamage(name)
 end
 hook.Add("HUDShouldDraw", "HideDefaultDamage", HideDefaultDamage)
 
--- renderscene override
+
 local deathRenderView = {
     x = 0, y = 0, drawhud = true, drawviewmodel = false, dopostprocess = true, drawmonitors = true,
 }

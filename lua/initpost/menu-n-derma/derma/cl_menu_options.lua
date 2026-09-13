@@ -11,6 +11,7 @@ local hg_font = ConVarExists("hg_font") and GetConVar("hg_font") or CreateClient
 local hg_oldradialmenu = CreateClientConVar("hg_oldradialmenu", "0", true, false, "use the old radial menu style", 0, 1)
 local hg_nojogging = CreateClientConVar("hg_nojogging", "0", true, true, "Automatically sprint when holding shift.", 0, 1)
 local hg_gollavo_headshot_effect = ConVarExists("hg_gollavo_headshot_effect") and GetConVar("hg_gollavo_headshot_effect") or CreateClientConVar("hg_gollavo_headshot_effect", "1", true, false, "Enable Gollavo headshot effect", 0, 1)
+local hg_reduce_screeneffects = ConVarExists("hg_reduce_screeneffects") and GetConVar("hg_reduce_screeneffects") or CreateClientConVar("hg_reduce_screeneffects", "0", true, false, "Reduce screen shader effects by 50%", 0, 1)
 
 local function ForceHGFirstPersonDeath()
 	if hg_firstperson_death:GetString() != "0" then
@@ -143,6 +144,7 @@ hg.settings:AddOpt("Debug","hg_setzoompos", "Edit weapon zoompos, check console 
 hg.settings:AddOpt("Debug","hg_show_hitbox", "Show hitboxes")
 
 hg.settings:AddOpt("Optimization","hg_potatopc", "Potato PC Mode")
+hg.settings:AddOpt("Optimization","hg_reduce_screeneffects", "Reduce screen effects 50%")
 hg.settings:AddOpt("Optimization","hg_anims_draw_distance", "Animations Draw Distance", true, nil, "int")
 hg.settings:AddOpt("Optimization","hg_anim_fps", "Animations FPS", nil, nil, "int")
 hg.settings:AddOpt("Optimization","hg_attachment_draw_distance", "Attachment Draw Distance", true, nil, "int")
@@ -623,6 +625,7 @@ function SettingsRefreshContent()
 
     for convarName, settingData in SortedPairs(hg.settings.tbl[settings_active_category]) do
         if convarName == "hg_gollavo_headshot_effect" and not InfoHasLocalAchievement("gollavo") then continue end
+        if convarName == "hg_reduce_screeneffects" and not GetConVar("hg_potatopc"):GetBool() then continue end
         local convar = GetConVar(settingData[2])
         if not convar then continue end
 
