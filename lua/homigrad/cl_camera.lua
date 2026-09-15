@@ -1,4 +1,6 @@
 local view = render.GetViewSetup()
+local hg_leancam_mul = ConVarExists("hg_leancam_mul") and GetConVar("hg_leancam_mul") or CreateClientConVar("hg_leancam_mul", "7", true, false, "Multiply first-person camera view leaning angle", -10, 10)
+local hg_camtiltlimit = ConVarExists("hg_camtiltlimit") and GetConVar("hg_camtiltlimit") or CreateClientConVar("hg_camtiltlimit", "3", true, false, "Limit first-person camera tilt (roll) angle", 0, 15)
 local whitelist = {
 	weapon_physgun = true,
 	gmod_tool = true,
@@ -190,6 +192,7 @@ function HGAddView(ply, origin, angles, velLen)
 
 		if(ply.MovementInertiaAddView)then
 			angles = angles + ply.MovementInertiaAddView
+			angles[3] = math.Clamp(angles[3], -hg_camtiltlimit:GetFloat(), hg_camtiltlimit:GetFloat())
 			ply.MovementInertiaAddView.r = Lerp(FrameTime() * 5, ply.MovementInertiaAddView.r, 0)
 			ply.MovementInertiaAddView.p = Lerp(FrameTime() * 5, ply.MovementInertiaAddView.p, 0)
 		end
@@ -232,7 +235,6 @@ hook.Remove("CreateMove", "wac_cl_seatswitch_centerview")
 //PrintTable(wac)
 
 local lerpaim = 1
-local hg_leancam_mul = ConVarExists("hg_leancam_mul") and GetConVar("hg_leancam_mul") or CreateClientConVar("hg_leancam_mul", "7", true, false, "Multiply first-person camera view leaning angle", -10, 10)
 zooming = false
 lerpfovadd2 = 0
 local depFovPulseLerp = 0
@@ -626,6 +628,7 @@ function hg.cam_things(ply, view, angles)
 	angles[3] = angles[3] - angle_difference[2] * 0.5
 	--angles[3] = angles[3] - position_differencedot
 	angles[3] = angles[3] - (lean_lerp or 0) * hg_leancam_mul:GetInt()
+	angles[3] = math.Clamp(angles[3], -hg_camtiltlimit:GetFloat(), hg_camtiltlimit:GetFloat())
 end
 
 concommand.Add("+altlook",function()
