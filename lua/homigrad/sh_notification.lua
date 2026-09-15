@@ -200,14 +200,7 @@ if CLIENT then
 		if not hg_newthoughts:GetBool() then return end
 		if lply:IsBerserk() then return end
 
-		table.insert(hg.thoughts, {msg, CurTime(), clr or Color(255, 255, 255, 255)})
-
-		while #hg.thoughts > 3 do
-			local tbl = hg.thoughts[1]
-			local clr = tbl[3]
-			chat.AddText(Color(clr.r, clr.g, clr.b, 255), tbl[1] .. "\n")
-			table.remove(hg.thoughts, 1)
-		end
+		table.insert(hg.notifications, {msg, defaultShowTimer, clr or Color(255, 255, 255, 255)})
 	end
 
 	local PLAYER = FindMetaTable("Player")
