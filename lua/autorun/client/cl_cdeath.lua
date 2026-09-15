@@ -78,6 +78,7 @@ local cv_cam_max_dist = GetConVar("deatheffect_cam_max_dist")
 local cv_cam_min_dist = GetConVar("deatheffect_cam_min_dist")
 local cv_alt_sound    = GetConVar("deatheffect_alt_sound")
 local cv_death_screen = GetConVar("deatheffect_death_screen")
+local cv_sandbox_nodeathscreen = GetConVar("hg_sandbox_nodeathscreen")
 
 surface.CreateFont("DeathEffect_Key", { font = "Roboto", size = 52, weight = 700 })
 surface.CreateFont("DeathEffect_Label", { font = "Roboto", size = 22, weight = 400 })
@@ -178,8 +179,17 @@ local function DeathEffectRoundActive()
     return true
 end
 
+local function SandboxNoDeathScreen()
+    return engine.ActiveGamemode() == "sandbox" and cv_sandbox_nodeathscreen and cv_sandbox_nodeathscreen:GetBool()
+end
+
 local function DeathScreenEnabled()
+    if SandboxNoDeathScreen() then return false end
     return not cv_death_screen or cv_death_screen:GetBool()
+end
+
+local function SandboxNoDeath()
+    return hg and hg.SandboxNoDeathScreen and hg.SandboxNoDeathScreen()
 end
 
 local function RealishDeathEffect()
@@ -239,6 +249,7 @@ end
 
 local function InitDeathSequence(ply)
     if isDead then return end
+    if SandboxNoDeath() then return end
     isDead           = true
     if DeathScreenEnabled() and not RealishDeathEffect() then
         TakeAuthority()
@@ -294,6 +305,34 @@ end
 local function CinematicDeathTracker()
     local ply = LocalPlayer()
     if not IsValid(ply) then return end
+
+    if SandboxNoDeathScreen() then return end
+
+    if SandboxNoDeath() then
+        if isDead then
+            isDead = false
+            stage2Started = false
+            keepSoundAlive = false
+            inTransition = false
+            inSpectator = false
+            autoCompatTriggered = false
+            compatActive = false
+            ReleaseAuthority()
+            if IsValid(ragdollEnt) then ragdollEnt:SetNoDraw(false) end
+            ragdollEnt = nil
+            ply:SetDSP(0)
+            ply:ConCommand("soundfade 0 1")
+            for _, station in ipairs(deathSoundChannels) do
+                if IsValid(station) then station:Stop() end
+            end
+            deathSoundChannels = {}
+            if ply:GetNWBool("DeathEffect_BlockRespawn", false) then
+                net.Start("DeathEffect_CompatUnblock")
+                net.SendToServer()
+            end
+        end
+        return
+    end
 
     if not DeathEffectRoundActive() then
         hasSpawned = ply:Alive()
@@ -649,6 +688,7 @@ hook.Add("PreDrawOpaqueRenderables", "CinematicDeathHideRagdoll", CinematicDeath
 
 local function CinematicDeathBackground()
     if not isDead or compatActive then return end
+    if SandboxNoDeathScreen() then return end
 
     local sw, sh  = ScrW(), ScrH()
     local elapsed = CurTime() - deathTime
