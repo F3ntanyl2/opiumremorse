@@ -95,19 +95,31 @@ timer.Create("DeathEffect_StuckSweep", 5, 0, function()
 end)
 
 hook.Add("PlayerDeath", "DeathEffect_OnDeath", function(ply)
-    if ply:IsBot() then
-        ply:SetNWBool("DeathEffect_BlockRespawn", false)
+	if ply:IsBot() then
+		ply:SetNWBool("DeathEffect_BlockRespawn", false)
 
-        timer.Simple(0, function()
-            if IsValid(ply) and not ply:Alive() then
-                ply:Spawn()
-            end
-        end)
+		timer.Simple(0, function()
+			if IsValid(ply) and not ply:Alive() then
+				ply:Spawn()
+			end
+		end)
 
-        return
-    end
+		return
+	end
 
-    if not DeathEffectRoundActive() then
+	if hg and hg.SandboxNoDeathScreen and hg.SandboxNoDeathScreen(ply) then
+		ply:SetNWBool("DeathEffect_BlockRespawn", true)
+		ply.DeathEffect_DeathTime = CurTime()
+		timer.Simple(2, function()
+			if IsValid(ply) and not ply:Alive() then
+				DeathEffect_ClearBlock(ply, true)
+				ply:Spawn()
+			end
+		end)
+		return
+	end
+
+	if not DeathEffectRoundActive() then
         ply:SetNWBool("DeathEffect_BlockRespawn", false)
         return
     end
