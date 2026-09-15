@@ -91,6 +91,19 @@ local anglesadd = Angle()
 local oldangs = Angle()
 local lerpedq = Quaternion()
 local hg_newfakecam = ConVarExists("hg_newfakecam") and GetConVar("hg_newfakecam") or CreateConVar("hg_newfakecam", 0, FCVAR_ARCHIVE, "New camera rotate", 0, 1)
+local hg_camtiltlimit = ConVarExists("hg_camtiltlimit") and GetConVar("hg_camtiltlimit") or CreateClientConVar("hg_camtiltlimit", "3", true, false, "Limit first-person camera tilt (roll) angle", 0, 15)
+local hg_ragdollcamthird = false
+local hg_vpressed = false
+hook.Add("Think", "hg_ragdoll_camtoggle", function()
+	if not IsValid(lply) or not hg.RagdollCombatInUse(lply) then return end
+	local down = input.IsKeyDown(KEY_V)
+	if down and not hg_vpressed then
+		hg_vpressed = true
+		hg_ragdollcamthird = not hg_ragdollcamthird
+	elseif not down then
+		hg_vpressed = false
+	end
+end)
 local rollang = 0
 local ctime
 local vecUpX, vecUpY, vecUpZ = Vector(1, 0, 0), Vector(0, 1, 0), Vector(0, 0, 1)
@@ -157,6 +170,10 @@ hook.Add("HG.InputMouseApply", "fakeCameraAngles2", function(tbl)
 	local angle2 = -(-angle)
 	rollang = follow == lply.OldRagdoll and 0 or rollang
 	angle2.roll = rollang
+
+	if hg.RagdollCombatInUse(lply) then
+		rollang = math_Clamp(rollang, -hg_camtiltlimit:GetFloat(), hg_camtiltlimit:GetFloat())
+	end
 	
 	if GetGlobalBool("hg_shitty_fake", true) and math.abs(math.AngleDifference(rollang, angle.roll)) < 60 then
 		angle = LerpAngleFT(follow == lply.OldRagdoll and 0.1 or 0.01, angle, angle2)--math.Approach(angle.roll, rollang, adda * ftlerped * 80)
@@ -167,6 +184,9 @@ hook.Add("HG.InputMouseApply", "fakeCameraAngles2", function(tbl)
 	angle.roll = fucke and 0 or angle.roll - (tbl.vpangle and tbl.vpangle.roll or 0)
 
 	rollang = rollang + lean_lerp * 0.5
+	if hg.RagdollCombatInUse(lply) then
+		rollang = math_Clamp(rollang, -hg_camtiltlimit:GetFloat(), hg_camtiltlimit:GetFloat())
+	end
 
 	local q = Quaternion():SetAngle(angle)
     local q_pitch = Quaternion():SetAngleAxis(y / 50, vecUpY)
@@ -187,6 +207,10 @@ hook.Add("HG.InputMouseApply", "fakeCameraAngles2", function(tbl)
 	angle.pitch = newAng.p
     angle.yaw = newAng.y
     angle.roll = fucke and oldroll + lean_lerp * 0.5 or newAng.r
+
+	if hg.RagdollCombatInUse(lply) then
+		angle.roll = math_Clamp(angle.roll, -hg_camtiltlimit:GetFloat(), hg_camtiltlimit:GetFloat())
+	end
 
 	if wep.IsResting and wep:IsResting() then
 		angle.roll = math.Clamp(angle.roll, -15, 15)
@@ -339,14 +363,16 @@ CalcView = function(ply, origin, angles, fov, znear, zfar)
 			view.angles = att_Ang
 		else
 			if not follow:GetManipulateBoneScale(follow:LookupBone("ValveBiped.Bip01_Head1")):IsEqualTol(vecZero,0.001) then
-				follow:ManipulateBoneScale(follow:LookupBone("ValveBiped.Bip01_Head1"),lerpasad > 0.9 and vecFull or vecPochtiZero)
+				follow:ManipulateBoneScale(follow:LookupBone("ValveBiped.Bip01_Head1"),(hg.RagdollCombatInUse(ply) and not hg_ragdollcamthird) and vecPochtiZero or (lerpasad > 0.9 and vecFull or vecPochtiZero))
 			end
 
 			lerpasad = Lerp(0.1, lerpasad, (IsAimingNoScope(ply) and 0 or 1))
 
 			local ang = ply:EyeAngles()
-			
-			if !hg_firstperson_ragdoll:GetBool() then
+			local ragdollcombat = hg.RagdollCombatInUse(ply)
+			local thirdperson = (not hg_firstperson_ragdoll:GetBool() and not ragdollcombat) or (ragdollcombat and hg_ragdollcamthird)
+
+			if thirdperson then
 				local tr = {}
 				tr.start = pos
 				tr.endpos = pos - ang:Forward() * 60 * lerpasad + ang:Right() * 15 * lerpasad
