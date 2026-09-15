@@ -628,8 +628,8 @@ local math_abs, math_Approach, math_AngleDifference, math_Clamp, math_cos, math_
 
 			if(CLIENT)then
 				ply.MovementInertiaAddView = ply.MovementInertiaAddView or Angle(0,0,0)
-				ply.MovementInertiaAddView.r = ply.MovementInertiaAddView.r + side_move * delta_time * inertia_len * 0.03
-				ply.MovementInertiaAddView.p = ply.MovementInertiaAddView.p + math_abs(side_move) * delta_time * inertia_len * 0.01
+				ply.MovementInertiaAddView.r = math_Clamp(ply.MovementInertiaAddView.r + side_move * delta_time * inertia_len * 0.03, -6, 6)
+				ply.MovementInertiaAddView.p = math_Clamp(ply.MovementInertiaAddView.p + math_abs(side_move) * delta_time * inertia_len * 0.01, -2, 2)
 			end
 		--//
 
