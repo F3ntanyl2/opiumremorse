@@ -23,6 +23,7 @@ end
 
 function ENT:Use(activator)
 	if activator:IsPlayer() then
+		if hg and hg.SandboxInfiniteAmmo and hg.SandboxInfiniteAmmo(activator) then return end
 		activator:GiveAmmo(self.AmmoCount, self.AmmoType, true)
 		self:EmitSound("snd_jack_hmcd_ammobox.wav", 75, math.random(90, 110), 1, CHAN_ITEM)
 		self:Remove()
