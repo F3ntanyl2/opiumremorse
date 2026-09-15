@@ -7,7 +7,15 @@ local function IsJogging(ply, vel)
 end
 --\\ Custom running anim rate
 	hook.Add("UpdateAnimation", "NormAnimki", function(ply, vel, maxSeqGroundSpeed)
-		if not IsValid(ply) or not ply:Alive() or not ply:OnGround() then return end
+		if not IsValid(ply) or not ply:Alive() then return end
+		local ragdollcombat = hg.RagdollCombatInUse and hg.RagdollCombatInUse(ply)
+		if ragdollcombat then
+			local ragdoll = ply.FakeRagdoll
+			if not IsValid(ragdoll) then return end
+			vel = ragdoll:GetVelocity()
+		elseif not ply:OnGround() then
+			return
+		end
 		local lenSqr = vel:LengthSqr()
 		local jogging = IsJogging(ply, vel)
 		if CLIENT and ply == LocalPlayer() then
@@ -44,10 +52,15 @@ end
 	hook.Add( "CalcMainActivity", "RunningAnim", function(ply, vel)
 		local wep = IsValid(ply:GetActiveWeapon()) and ply:GetActiveWeapon()
 		local isAmputated = ply:IsBerserk() and ply.organism and (ply.organism.llegamputated or ply.organism.rlegamputated)
+		local ragdollcombat = hg.RagdollCombatInUse and hg.RagdollCombatInUse(ply)
+		if ragdollcombat and IsValid(ply.FakeRagdoll) then
+			vel = ply.FakeRagdoll:GetVelocity()
+		end
 		local speed = vel:Length()
 		local jogging = IsJogging(ply, vel)
 		if CLIENT and ply == LocalPlayer() and (ply.hg_isSprinting or ply.hg_isJogging) and ply:KeyDown(IN_FORWARD) then speed = math.max(speed, jogging and 210 or 280) end
-		if (not ply:InVehicle()) and ply:IsOnGround() and not hg.KeyDown(ply, IN_JUMP) and speed > 180 and wep and runHoldTypes[wep:GetHoldType()] and not isAmputated then
+		local onGround = ragdollcombat and true or ply:IsOnGround()
+		if (not ply:InVehicle()) and onGround and not hg.KeyDown(ply, IN_JUMP) and speed > 180 and wep and runHoldTypes[wep:GetHoldType()] and not isAmputated then
 			local isFurry = ply.PlayerClassName == "furry"
 			local anim = ACT_HL2MP_RUN_FAST
 			if jogging then
