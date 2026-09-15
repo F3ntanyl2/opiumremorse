@@ -179,6 +179,9 @@ hg.settings:AddOpt("View","hg_gun_cam", "Gun camera (WIP Admin only)")
 hg.settings:AddOpt("Sound","hg_dmusic", "Dynamic Music")
 hg.settings:AddOpt("Sound","hg_quietshots", "Enable/Disable Quietshoot Sounds")
 
+hg.settings:AddOpt("Sandbox","hg_sandbox_nodeathscreen", "Disable Deceased death screen", nil, nil, "bool")
+hg.settings:AddOpt("Sandbox","hg_sandbox_infiniteammo", "Infinite ammo", nil, nil, "bool")
+
 
 function hg.CreateCategory(ctgName, ParentPanel, yPos)
     local pppanel = vgui.Create('DPanel', ParentPanel)
