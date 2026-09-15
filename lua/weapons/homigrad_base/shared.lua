@@ -332,10 +332,13 @@ end
 
 function SWEP:IsSprinting()
 	local ply = self:GetOwner()
+	local ragdollcombat = hg.RagdollCombatInUse and hg.RagdollCombatInUse(ply)
+	local vel = ragdollcombat and IsValid(ply.FakeRagdoll) and ply.FakeRagdoll:GetVelocity() or ply:GetVelocity()
+	local speedSqr = vel:LengthSqr()
 	if hg_aimtoshoot:GetBool() then
-		return not ply:IsNPC() and (self:KeyDown(IN_SPEED) and ply:GetVelocity():LengthSqr() > 150 * 150) or not self:KeyDown(IN_ATTACK2) and not IsValid(ply.FakeRagdoll)
+		return not ply:IsNPC() and (self:KeyDown(IN_SPEED) and speedSqr > 150 * 150) or not self:KeyDown(IN_ATTACK2) and (ragdollcombat or not IsValid(ply.FakeRagdoll))
 	else
-		return not ply:IsNPC() and self:KeyDown(IN_SPEED) and ply:GetVelocity():LengthSqr() > 150 * 150 and not IsValid(ply.FakeRagdoll)
+		return not ply:IsNPC() and self:KeyDown(IN_SPEED) and speedSqr > 150 * 150 and (ragdollcombat or not IsValid(ply.FakeRagdoll))
 	end
 end
 
@@ -1572,11 +1575,13 @@ hg.postureFunctions2 = {
 		local epicRunX = self.EpicRunPos and self.EpicRunPos[1]
 
 		local posturehold = !self:IsSprinting()
-		local running = posturehold or ply:GetVelocity():LengthSqr() > 150 * 150
+		local ragdollcombat_rc = hg.RagdollCombatInUse and hg.RagdollCombatInUse(ply)
+		local vel_rc = ragdollcombat_rc and IsValid(ply.FakeRagdoll) and ply.FakeRagdoll:GetVelocity() or ply:GetVelocity()
+		local running = posturehold or vel_rc:LengthSqr() > 150 * 150
 		
 		if !running then return end
 
-		local runmul = posturehold and 1 or math.Clamp((ply:GetVelocity():Length() - 150) / 300, 0, 1) * (1 - math.sin((self.reload and (self.reload - CurTime()) / self.StaminaReloadTime or 1) * math.pi))
+		local runmul = posturehold and 1 or math.Clamp((vel_rc:Length() - 150) / 300, 0, 1) * (1 - math.sin((self.reload and (self.reload - CurTime()) / self.StaminaReloadTime or 1) * math.pi))
 		
 		self.AdditionalPosPreLerp[2] = self.AdditionalPosPreLerp[2] - (3 + (pistolRun and (isLocal and (epicRunZ or (running and 6 or 2)) - 6 or 4) or (isLocal and -2 or -6 + (ply:GetNWFloat("InLegKick", 0) and 5 or 0)) )) * runmul
 		self.AdditionalPosPreLerp[1] = self.AdditionalPosPreLerp[1] - (-7 + (pistolRun and (isLocal and (epicRunY or (running and 6 or 4)) + 3 or 8 + (ply:GetNWFloat("InLegKick", 0) and -5 or 0)) or (isLocal and 8 or 2 + (ply:GetNW2Float("InLegKick", 0) and 8 or 0)) ) + 3 * math.Clamp(-ply:EyeAngles()[1] / 20, self:IsPistolHoldType() and -1 or -1, 0)) * runmul
@@ -1948,7 +1953,8 @@ function SWEP:GetAdditionalValues()
 	self.AdditionalAngPreLerp[3] = self.AdditionalAngPreLerp[3] - y * 3 * lena
 
 	--// Sprint anim
-	if CLIENT and self:IsLocal() and owner:IsOnGround() and not self.reload then
+	local ragdollcombat_sprint = hg.RagdollCombatInUse and hg.RagdollCombatInUse(owner)
+	if CLIENT and self:IsLocal() and (ragdollcombat_sprint or owner:IsOnGround()) and not self.reload then
 		local runMul = vellen / owner:GetRunSpeed()
 		--if runMul >= 0.32 then
 			if not self:IsPistolHoldType() and not self.CanEpicRun then
