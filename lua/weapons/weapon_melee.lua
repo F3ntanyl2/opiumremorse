@@ -32,6 +32,9 @@ end
 function SWEP:IsSprinting()
     local owner = self:GetOwner()
     if not IsValid(owner) then return false end
+    if hg.RagdollCombatInUse and hg.RagdollCombatInUse(owner) then
+        return owner:KeyDown(IN_SPEED) and IsValid(owner.FakeRagdoll) and owner.FakeRagdoll:GetVelocity():LengthSqr() > 150 * 150
+    end
     if not owner.IsSprinting then return false end
     if owner:IsSprinting() and hg.GetCurrentCharacter(owner):IsPlayer() then return true end
 end
