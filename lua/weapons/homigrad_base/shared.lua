@@ -769,6 +769,14 @@ if CLIENT then
 		antialias = true
 	})
 
+	surface.CreateFont("AmmoFontInf",{
+		font = "Segoe UI Symbol",
+		size = ScreenScale(18),
+		extended = true,
+		weight = 500,
+		antialias = true
+	})
+
 	surface.CreateFont("DescFont",{
 		font = "Courier Prime",
 		size = ScreenScale(8),
@@ -959,17 +967,21 @@ if CLIENT then
 				end
 			end
 
-			if magCount > 0 then
+			local infinity = hg and hg.SandboxInfiniteAmmo and hg.SandboxInfiniteAmmo()
+
+			if magCount > 0 or infinity then
+				local ammoText = infinity and ("+\226\136\158") or ("+"..magCount)
+				local ammoFont = infinity and "AmmoFontInf" or "AmmoFont"
 				coloruse.r = 0
 				coloruse.g = 0
 				coloruse.b = 0
 				coloruse.a = 210*lerpAmmoCheck
-				draw.SimpleText("+"..magCount,"AmmoFont",posX2 + 2, scrH*HudHPos + 2,coloruse,TEXT_ALIGN_LEFT,TEXT_ALIGN_CENTER)
+				draw.SimpleText(ammoText,ammoFont,posX2 + 2, scrH*HudHPos + 2,coloruse,TEXT_ALIGN_LEFT,TEXT_ALIGN_CENTER)
 				coloruse.r = 255
 				coloruse.g = 255
 				coloruse.b = 255
 				coloruse.a = 210*lerpAmmoCheck
-				draw.SimpleText("+"..magCount,"AmmoFont",posX2, scrH*HudHPos,coloruse,TEXT_ALIGN_LEFT,TEXT_ALIGN_CENTER)
+				draw.SimpleText(ammoText,ammoFont,posX2, scrH*HudHPos,coloruse,TEXT_ALIGN_LEFT,TEXT_ALIGN_CENTER)
 			end
 			--draw.SimpleText("lastShoot: "..lastShoot,"Default",0,0)
 		end
