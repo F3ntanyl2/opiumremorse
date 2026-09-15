@@ -1,0 +1,74 @@
+hg = hg or {}
+
+if CLIENT then
+	CreateClientConVar("hg_sandbox_nodeathscreen", "0", true, true, "Completely disable the death screen in the sandbox gamemode", 0, 1)
+	CreateClientConVar("hg_sandbox_infiniteammo", "0", true, true, "Infinite ammo in the sandbox gamemode (can not loot ammo packs, ammo bar shows infinity)", 0, 1)
+end
+
+function hg.SandboxMode()
+	return engine.ActiveGamemode() == "sandbox"
+end
+
+function hg.SandboxNoDeathScreen(ply)
+	if not hg.SandboxMode() then return false end
+	if SERVER and IsValid(ply) then
+		return ply:GetInfoNum("hg_sandbox_nodeathscreen", 0) >= 1
+	end
+	local cv = GetConVar("hg_sandbox_nodeathscreen")
+	return cv and cv:GetBool()
+end
+
+function hg.SandboxInfiniteAmmo(ply)
+	if not hg.SandboxMode() then return false end
+	if SERVER and IsValid(ply) then
+		return ply:GetInfoNum("hg_sandbox_infiniteammo", 0) >= 1
+	end
+	local cv = GetConVar("hg_sandbox_infiniteammo")
+	return cv and cv:GetBool()
+end
+
+if CLIENT then
+	hook.Add("HUDShouldDraw", "Sandbox_InfiniteAmmo_HideDefaultAmmo", function(name)
+		if name == "CHudAmmo" and hg.SandboxInfiniteAmmo() then
+			return false
+		end
+	end)
+end
+
+if SERVER then
+	local function GetPackAmmo(ammoID)
+		local name = game.GetAmmoName(ammoID)
+		if not name then return 30 end
+		local tbl = hg.ammoents and hg.ammoents[string.lower(string.Replace(name, " ", ""))]
+		return (tbl and tbl.Count) or 30
+	end
+
+	local function RefillAmmo(ply)
+		for _, wep in ipairs(ply:GetWeapons()) do
+			if not IsValid(wep) then continue end
+			local ammoID = wep:GetPrimaryAmmoType()
+			if ammoID and ammoID >= 0 then
+				local pack = GetPackAmmo(ammoID)
+				if ply:GetAmmoCount(ammoID) < pack then
+					ply:SetAmmo(pack, ammoID)
+				end
+			end
+		end
+	end
+
+	hook.Add("Think", "Sandbox_InfiniteAmmo", function()
+		for _, ply in ipairs(player.GetAll()) do
+			if not IsValid(ply) or not ply:Alive() then continue end
+			if not hg.SandboxInfiniteAmmo(ply) then continue end
+			RefillAmmo(ply)
+		end
+	end)
+
+	hook.Add("PlayerSpawn", "Sandbox_InfiniteAmmo_Spawn", function(ply)
+		timer.Simple(0.15, function()
+			if not IsValid(ply) or not ply:Alive() then return end
+			if not hg.SandboxInfiniteAmmo(ply) then return end
+			RefillAmmo(ply)
+		end)
+	end)
+end
