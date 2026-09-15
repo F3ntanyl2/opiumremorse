@@ -140,7 +140,8 @@ if CLIENT then
                 WorldModel:SetCycle(timing)
             end
 
-            self.sprintanim = qerp(0.02 * FrameTime() / engine.TickInterval(),self.sprintanim or 0,(owner.IsSprinting and owner:IsSprinting()) and 1 or 0)
+            local ownerSprinting = (owner.IsSprinting and owner:IsSprinting()) or (hg.RagdollCombatInUse and hg.RagdollCombatInUse(owner) and owner:KeyDown(IN_SPEED) and IsValid(owner.FakeRagdoll) and owner.FakeRagdoll:GetVelocity():LengthSqr() > 150 * 150)
+            self.sprintanim = qerp(0.02 * FrameTime() / engine.TickInterval(),self.sprintanim or 0,ownerSprinting and 1 or 0)
             
 			local tr = hg.eyeTrace(owner,60)
 			local ang = owner:EyeAngles()
